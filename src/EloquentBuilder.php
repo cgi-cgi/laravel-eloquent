@@ -17,7 +17,7 @@ class EloquentBuilder extends Builder
      *
      * @return EloquentBuilder
      */
-    public function join($relations, $type = 'inner', $where = false)
+    public function joinRelation($relations, $type = 'inner', $where = false)
     {
     	if (is_string($relations)) {
     		$relations = [$relations];
@@ -78,9 +78,9 @@ class EloquentBuilder extends Builder
      *
      * @return EloquentBuilder|static
      */
-    public function joinWhere($relations, $type = 'inner')
+    public function joinRelationWhere($relations, $type = 'inner')
     {
-        return $this->join($relations, $type, true);
+        return $this->joinRelation($relations, $type, true);
     }
 
     /**
@@ -90,9 +90,9 @@ class EloquentBuilder extends Builder
      *
      * @return EloquentBuilder|static
      */
-    public function leftJoin($relations)
+    public function leftjoinRelation($relations)
     {
-        return $this->join($relations, 'left');
+        return $this->joinRelation($relations, 'left');
     }
 
     /**
@@ -102,9 +102,9 @@ class EloquentBuilder extends Builder
      *
      * @return EloquentBuilder|static
      */
-    public function leftJoinWhere($relations)
+    public function leftJoinRelationWhere($relations)
     {
-        return $this->joinWhere($relations, 'left');
+        return $this->joinRelationWhere($relations, 'left');
     }
 
     /**
@@ -114,9 +114,9 @@ class EloquentBuilder extends Builder
      *
      * @return EloquentBuilder|static
      */
-    public function rightJoin($relations)
+    public function rightJoinRelation($relations)
     {
-        return $this->join($relations, 'right');
+        return $this->joinRelation($relations, 'right');
     }
 
     /**
@@ -126,9 +126,9 @@ class EloquentBuilder extends Builder
      *
      * @return EloquentBuilder|static
      */
-    public function rightJoinWhere($relations)
+    public function rightJoinRelationWhere($relations)
     {
-        return $this->joinWhere($relations, 'right');
+        return $this->joinRelationWhere($relations, 'right');
     }
 
     /**
@@ -137,8 +137,8 @@ class EloquentBuilder extends Builder
      * @param  string  $relation
      * @return EloquentBuilder|static
      */
-    public function crossJoin($relations)
+    public function crossJoinRelation($relations)
     {
-        return $this->join($relations, 'cross');
+        return $this->joinRelation($relations, 'cross');
     }
 }
