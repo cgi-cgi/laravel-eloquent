@@ -2,12 +2,54 @@
 
 namespace Llama\Database\Eloquent;
 
+use Illuminate\Support\Str;
+
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class EloquentBuilder extends Builder
 {
+	/**
+	 * Get deepest relation instance
+	 *
+	 * @param $model
+	 * @param array $relationName
+	 * @return null
+	 */
+	public function getRelationInstance($model, array $relationName) {
+		$currentRelationName = array_shift($relationName);
+
+		$related = $model->$currentRelationName();
+		if (!$related instanceof Relation) {
+			return null;
+		}
+
+		if (!empty($relationName)) {
+			$relation = $related->getRelated();
+			return $this->getRelationInstance($relation, $relationName);
+		}
+
+		return $related;
+	}
+
+	/**
+	 * Get nested relation
+	 *
+	 * @param string $relation
+	 * @return null
+	 */
+	public function getNestedRelation($relation) {
+		if (Str::contains($relation, '.')) {
+			$relation = explode('.', $relation);
+		} else {
+			$relation = [$relation];
+		}
+
+		return $this->getRelationInstance($this->model, $relation);
+	}
+
     /**
      * Add a join clause to the query.
      *
@@ -22,10 +64,10 @@ class EloquentBuilder extends Builder
     	if (is_string($relations)) {
     		$relations = [$relations];
     	}
-    	
+
     	foreach ($relations as $relation) {
-	        $relation = $this->getRelation($relation);
-	
+	        $relation = $this->getNestedRelation($relation);
+
 	        if ($relation instanceof BelongsTo) {
 	            $this->query->join(
 	                $relation->getRelated()->getTable(),
@@ -44,7 +86,7 @@ class EloquentBuilder extends Builder
 	                $type,
 	                $where
 	            );
-	
+
 	            $this->query->join(
 	                $relation->getRelated()->getTable(),
 	                $relation->getRelated()->getTable() . '.' . $relation->getRelated()->getKeyName(),
