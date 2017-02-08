@@ -67,11 +67,12 @@ class EloquentBuilder extends Builder
 
     	foreach ($relations as $relation) {
 	        $relation = $this->getNestedRelation($relation);
+			$parent = $relation->getParent();
 
 	        if ($relation instanceof BelongsTo) {
 	            $this->query->join(
 	                $relation->getRelated()->getTable(),
-	                $this->model->getTable() . '.' . $relation->getForeignKey(),
+					$parent->getTable() . '.' . $relation->getForeignKey(),
 	                '=',
 	                $relation->getRelated()->getTable() . '.' . $relation->getOtherKey(),
 	                $type,
