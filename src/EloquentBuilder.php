@@ -51,6 +51,22 @@ class EloquentBuilder extends Builder
 	}
 
     /**
+     * Parse nested relations to flat array
+     *
+     * @param $relations
+     * @return array
+     * @internal param string $relation
+     */
+    public function parseNestedRelations($relations) {
+        $results = [];
+        foreach ($relations as $relation) {
+            $results = $this->parseNestedWith($relation, $results);
+        }
+
+        return array_unique(array_keys($results));
+    }
+
+    /**
      * Add a join clause to the query.
      *
      * @param  array|string  $relations
@@ -64,6 +80,9 @@ class EloquentBuilder extends Builder
     	if (is_string($relations)) {
     		$relations = [$relations];
     	}
+
+        // parse nested relations to flat array
+        $relations = $this->parseNestedRelations($relations);
 
     	foreach ($relations as $relation) {
 	        $relation = $this->getNestedRelation($relation);
