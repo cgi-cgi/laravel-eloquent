@@ -127,8 +127,6 @@ class EloquentBuilder extends Builder
 	        }
     	}
 
-        $this->query->addSelect($this->model->getTable() . '.*');
-
         return $this;
     }
 
