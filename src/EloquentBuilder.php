@@ -11,44 +11,47 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class EloquentBuilder extends Builder
 {
-	/**
-	 * Get deepest relation instance
-	 *
-	 * @param $model
-	 * @param array $relationName
-	 * @return null
-	 */
-	public function getRelationInstance($model, array $relationName) {
-		$currentRelationName = array_shift($relationName);
 
-		$related = $model->$currentRelationName();
-		if (!$related instanceof Relation) {
-			return null;
-		}
+    protected $relationAliases = [];
 
-		if (!empty($relationName)) {
-			$relation = $related->getRelated();
-			return $this->getRelationInstance($relation, $relationName);
-		}
+    /**
+     * Get deepest relation instance
+     *
+     * @param $model
+     * @param array $relationName
+     * @return null
+     */
+    public function getRelationInstance($model, array $relationName) {
+        $currentRelationName = array_shift($relationName);
 
-		return $related;
-	}
+        $related = $model->$currentRelationName();
+        if (!$related instanceof Relation) {
+            return null;
+        }
 
-	/**
-	 * Get nested relation
-	 *
-	 * @param string $relation
-	 * @return null
-	 */
-	public function getNestedRelation($relation) {
-		if (Str::contains($relation, '.')) {
-			$relation = explode('.', $relation);
-		} else {
-			$relation = [$relation];
-		}
+        if (!empty($relationName)) {
+            $relation = $related->getRelated();
+            return $this->getRelationInstance($relation, $relationName);
+        }
 
-		return $this->getRelationInstance($this->model, $relation);
-	}
+        return $related;
+    }
+
+    /**
+     * Get nested relation
+     *
+     * @param string $relation
+     * @return null
+     */
+    public function getNestedRelation($relation) {
+        if (Str::contains($relation, '.')) {
+            $relation = explode('.', $relation);
+        } else {
+            $relation = [$relation];
+        }
+
+        return $this->getRelationInstance($this->model, $relation);
+    }
 
     /**
      * Parse nested relations to flat array
@@ -77,57 +80,101 @@ class EloquentBuilder extends Builder
      */
     public function joinRelation($relations, $type = 'inner', $where = false)
     {
-    	if (is_string($relations)) {
-    		$relations = [$relations];
-    	}
+        if (is_string($relations)) {
+            $relations = [$relations];
+        }
 
         // parse nested relations to flat array
         $relations = $this->parseNestedRelations($relations);
+        $aliases = $this->parseAliasMap($relations);
 
-    	foreach ($relations as $relation) {
-	        $relation = $this->getNestedRelation($relation);
-			$parent = $relation->getParent();
+        foreach ($relations as $relationName) {
+            $relation = $this->getNestedRelation($relationName);
+            $relationAlias = $aliases[$relationName];
 
-	        if ($relation instanceof BelongsTo) {
-	            $this->query->join(
-	                $relation->getRelated()->getTable(),
-					$parent->getTable() . '.' . $relation->getForeignKey(),
-	                '=',
-	                $relation->getRelated()->getTable() . '.' . $relation->getOtherKey(),
-	                $type,
-	                $where
-	            );
-	        } elseif ($relation instanceof BelongsToMany) {
-	            $this->query->join(
-	                $relation->getTable(),
-	                $relation->getQualifiedParentKeyName(),
-	                '=',
-	                $relation->getForeignKey(),
-	                $type,
-	                $where
-	            );
+            $parentName = $this->getParentRelations($relationName);
+            $parentAlias = !empty($parentName) ? $aliases[$parentName] : $relation->getParent()->getTable();
 
-	            $this->query->join(
-	                $relation->getRelated()->getTable(),
-	                $relation->getRelated()->getTable() . '.' . $relation->getRelated()->getKeyName(),
-	                '=',
-	                $relation->getOtherKey(),
-	                $type,
-	                $where
-	            );
-	        } else {
-	            $this->query->join(
-	                $relation->getRelated()->getTable(),
-	                $relation->getQualifiedParentKeyName(),
-	                '=',
-	                $relation->getForeignKey(),
-	                $type,
-	                $where
-	            );
-	        }
-    	}
+            if ($relation instanceof BelongsTo) {
+                $this->query->join(
+                    "{$relation->getRelated()->getTable()} as {$relationAlias}",
+                    $parentAlias . '.' . $relation->getForeignKey(),
+                    '=',
+                    $relationAlias . '.' . $relation->getOtherKey(),
+                    $type,
+                    $where
+                );
+            } elseif ($relation instanceof BelongsToMany) {
+                // pivot
+                $pivotAlias = "{$relationAlias}_pivot";
 
+                $this->query->join(
+                    "{$relation->getTable()} as {$pivotAlias}",
+                    "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
+                    '=',
+                    "{$pivotAlias}.{$this->getColumn($relation->getForeignKey())}",
+                    $type,
+                    $where
+                );
+
+                $this->query->join(
+                    "{$relation->getRelated()->getTable()} as {$relationAlias}",
+                    $relationAlias . '.' . $relation->getRelated()->getKeyName(),
+                    '=',
+                    "{$pivotAlias}.{$this->getColumn($relation->getOtherKey())}",
+                    $type,
+                    $where
+                );
+            } else {
+                $this->query->join(
+                    "{$relation->getRelated()->getTable()} as {$relationAlias}",
+                    "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
+                    '=',
+                    "{$relationAlias}.{$this->getColumn($relation->getForeignKey())}",
+                    $type,
+                    $where
+                );
+            }
+        }
+        $this->query->toSql();
         return $this;
+    }
+
+    private function parseAliasMap($relations = []) {
+        foreach ($relations as $relationName) {
+            $this->relationAliases[$relationName] = str_replace('.', '_rel_', $relationName);
+        }
+
+        return $this->relationAliases;
+    }
+
+    /**
+     * Parse and get only parent relations for nested relations
+     * @param $string
+     * @return string
+     */
+    private function getParentRelations($string) {
+        $arr = explode('.', $string);
+        array_pop($arr);
+        return implode('.', $arr);
+    }
+
+    /**
+     * Parse and get foreign/local keys from db query string
+     * @param $string
+     * @return mixed
+     */
+    private function getColumn($string) {
+        $arr = explode('.', $string);
+        return array_pop($arr);
+    }
+
+    /**
+     * @return array
+     */
+    public function getRelationAliases()
+    {
+        return $this->relationAliases;
     }
 
     /**
@@ -194,8 +241,9 @@ class EloquentBuilder extends Builder
     /**
      * Add a "cross join" clause to the query.
      *
-     * @param  string  $relation
+     * @param $relations
      * @return EloquentBuilder|static
+     * @internal param string $relation
      */
     public function crossJoinRelation($relations)
     {
