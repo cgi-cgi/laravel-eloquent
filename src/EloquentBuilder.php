@@ -63,7 +63,7 @@ class EloquentBuilder extends Builder
     public function parseNestedRelations($relations) {
         $results = [];
         foreach ($relations as $relation) {
-            $results = $this->parseNestedWith($relation, $results);
+            $results = $this->addNestedWiths($relation, $results);
         }
 
         return array_unique(array_keys($results));
@@ -100,7 +100,7 @@ class EloquentBuilder extends Builder
                     "{$relation->getRelated()->getTable()} as {$relationAlias}",
                     $parentAlias . '.' . $relation->getForeignKey(),
                     '=',
-                    $relationAlias . '.' . $relation->getOtherKey(),
+                    $relationAlias . '.' . $relation->getOwnerKey(),
                     $type,
                     $where
                 );
@@ -112,7 +112,7 @@ class EloquentBuilder extends Builder
                     "{$relation->getTable()} as {$pivotAlias}",
                     "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
                     '=',
-                    "{$pivotAlias}.{$this->getColumn($relation->getForeignKey())}",
+                    "{$pivotAlias}.{$this->getColumn($relation->getQualifiedForeignKeyName())}",
                     $type,
                     $where
                 );
@@ -121,7 +121,7 @@ class EloquentBuilder extends Builder
                     "{$relation->getRelated()->getTable()} as {$relationAlias}",
                     $relationAlias . '.' . $relation->getRelated()->getKeyName(),
                     '=',
-                    "{$pivotAlias}.{$this->getColumn($relation->getOtherKey())}",
+                    "{$pivotAlias}.{$this->getColumn($relation->getQualifiedRelatedKeyName())}",
                     $type,
                     $where
                 );
@@ -130,7 +130,7 @@ class EloquentBuilder extends Builder
                     "{$relation->getRelated()->getTable()} as {$relationAlias}",
                     "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
                     '=',
-                    "{$relationAlias}.{$this->getColumn($relation->getForeignKey())}",
+                    "{$relationAlias}.{$this->getColumn($relation->getQualifiedForeignKeyName())}",
                     $type,
                     $where
                 );
