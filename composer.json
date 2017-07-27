@@ -1,12 +1,18 @@
 {
-    "name": "llama-laravel/eloquent",
+    "name": "cgi/eloquent",
     "description": "Extends Laravel Eloquent ORM.",
-    "keywords": ["laravel", "llama", "eloquent", "join"],
+    "keywords": ["laravel", "llama", "eloquent", "join", "cgi"],
+    "homepage": "https://github.com/cgi-cgi/laravel-eloquent",
     "license": "MIT",
     "authors": [
         {
             "name": "XuaNguyen",
-            "email": "xuan.0211@gmail.com"
+            "email": "xuan.0211@gmail.com",
+            "role": "initiator"
+        },
+        {
+            "name": "cgi",
+            "email": "dev@bycgi.name"
         }
     ],
     "autoload": {
