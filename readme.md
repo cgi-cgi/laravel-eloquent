@@ -1,17 +1,18 @@
 # Eloquent Joins
 
-[![StyleCI](https://styleci.io/repos/77703450/shield?style=flat)](https://styleci.io/repos/77703450)
-[![Build Status](https://travis-ci.org/xuanhoa88/laravel-eloquent.svg)](https://travis-ci.org/xuanhoa88/llama-laravel/eloquent)
-[![Total Downloads](https://poser.pugx.org/xuanhoa88/laravel-eloquent/d/total.svg)](https://packagist.org/packages/xuanhoa88/llama-laravel/eloquent)
-[![Latest Stable Version](https://poser.pugx.org/xuanhoa88/laravel-eloquent/v/stable.svg)](https://packagist.org/packages/xuanhoa88/llama-laravel/eloquent)
-[![Latest Unstable Version](https://poser.pugx.org/xuanhoa88/laravel-eloquent/v/unstable.svg)](https://packagist.org/packages/xuanhoa88/llama-laravel/eloquent)
-[![License](https://poser.pugx.org/xuanhoa88/laravel-eloquent/license.svg)](https://packagist.org/packages/xuanhoa88/llama-laravel/eloquent)
+[![Latest Stable Version](https://poser.pugx.org/cgi/eloquent/v/stable)](https://packagist.org/packages/cgi/eloquent)
+[![Total Downloads](https://poser.pugx.org/cgi/eloquent/downloads)](https://packagist.org/packages/cgi/eloquent)
+[![Latest Unstable Version](https://poser.pugx.org/cgi/eloquent/v/unstable)](https://packagist.org/packages/cgi/eloquent)
+[![License](https://poser.pugx.org/cgi/eloquent/license)](https://packagist.org/packages/cgi/eloquent)
+[![Monthly Downloads](https://poser.pugx.org/cgi/eloquent/d/monthly)](https://packagist.org/packages/cgi/eloquent)
+[![Daily Downloads](https://poser.pugx.org/cgi/eloquent/d/daily)](https://packagist.org/packages/cgi/eloquent)
+[![composer.lock](https://poser.pugx.org/cgi/eloquent/composerlock)](https://packagist.org/packages/cgi/eloquent)
 
 This package allows you to simply call `$model->join($relation)` to join a Laravel Eloquent relationship's table on the keys declared by your relationship. Columns will be selected automatically,  and the joined records hydrated as models in the resulting collection. Laravel's Eloquent does support joins normally, but internally calls the underlying query builder, thereby expecting the name of a table and keys to join it on as arguments.
 
 ## Installation
 
-Eloquent Joins is installable [with Composer via Packagist](https://packagist.org/packages/xuanhoa88/llama-laravel/eloquent).
+Eloquent Joins is installable [with Composer via Packagist](https://packagist.org/packages/cgi/eloquent).
 
 ## Usage
 
