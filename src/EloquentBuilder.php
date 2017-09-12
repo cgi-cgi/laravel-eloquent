@@ -14,6 +14,85 @@ class EloquentBuilder extends Builder
 
     protected $relationAliases = [];
 
+    protected function mapColumns($columns) {
+        if (property_exists($this->model, 'mapped')) {
+            $mapped = $this->model->mapped;
+
+            if ($columns === ['*']) {
+                $columns = $this->getModel()->getVisible();
+            }
+
+            foreach ($mapped as $original => $alias) {
+                if (($key = array_search($original, $columns)) !== false) {
+                    unset($columns[$key]);
+                    $columns[$key] = "{$alias} as {$original}";
+                }
+            }
+        }
+
+        return $columns;
+    }
+
+    protected function mapColumn($column) {
+        if (property_exists($this->getModel(), 'mapped')) {
+            $mapped = $this->getModel()->mapped;
+            if (str_contains($column, '.')) {
+                $column = $this->getColumn($column);
+            }
+
+            if (array_key_exists($column, $mapped)) {
+                $column = $mapped[$column];
+            }
+        }
+
+        return $column;
+    }
+
+    /**
+     * @param array|\Closure|string $column
+     * @param null $operator
+     * @param null $value
+     * @param string $boolean
+     * @return $this
+     */
+    public function where($column, $operator = null, $value = null, $boolean = 'and')
+    {
+        $column = $this->mapColumn($column);
+
+        if ($column instanceof Closure) {
+            $query = $this->model->newQueryWithoutScopes();
+
+            $column($query);
+
+            $this->query->addNestedWhereQuery($query->getQuery(), $boolean);
+        } else {
+            $this->query->where(...func_get_args());
+        }
+
+        return $this;
+    }
+
+    /**
+     * Execute the query as a "select" statement.
+     *
+     * @param  array  $columns
+     * @return \Illuminate\Database\Eloquent\Collection|static[]
+     */
+    public function get($columns = ['*'])
+    {
+        $columns = $this->mapColumns($columns);
+        $builder = $this->applyScopes();
+
+        // If we actually found models we will also eager load any relationships that
+        // have been specified as needing to be eager loaded, which will solve the
+        // n+1 query issue for the developers to avoid running a lot of queries.
+        if (count($models = $builder->getModels($columns)) > 0) {
+            $models = $builder->eagerLoadRelations($models);
+        }
+
+        return $builder->getModel()->newCollection($models);
+    }
+
     /**
      * Get deepest relation instance
      *
