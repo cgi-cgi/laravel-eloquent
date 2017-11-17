@@ -2,6 +2,8 @@
 
 namespace Llama\Database\Eloquent;
 
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Support\Str;
 
 use Illuminate\Database\Eloquent\Builder;
@@ -112,7 +114,7 @@ class EloquentBuilder extends Builder
                     "{$relation->getTable()} as {$pivotAlias}",
                     "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
                     '=',
-                    "{$pivotAlias}.{$this->getColumn($relation->getQualifiedForeignKeyName())}",
+                    "{$pivotAlias}.{$this->getColumn($relation->getQualifiedForeignPivotKeyName())}",
                     $type,
                     $where
                 );
@@ -121,11 +123,12 @@ class EloquentBuilder extends Builder
                     "{$relation->getRelated()->getTable()} as {$relationAlias}",
                     $relationAlias . '.' . $relation->getRelated()->getKeyName(),
                     '=',
-                    "{$pivotAlias}.{$this->getColumn($relation->getQualifiedRelatedKeyName())}",
+                    "{$pivotAlias}.{$this->getColumn($relation->getQualifiedRelatedPivotKeyName())}",
                     $type,
                     $where
                 );
-            } else {
+            } elseif ($relation instanceof HasOneOrMany) {
+                // hasOne or hasMany
                 $this->query->join(
                     "{$relation->getRelated()->getTable()} as {$relationAlias}",
                     "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
@@ -136,7 +139,7 @@ class EloquentBuilder extends Builder
                 );
             }
         }
-        $this->query->toSql();
+
         return $this;
     }
 
