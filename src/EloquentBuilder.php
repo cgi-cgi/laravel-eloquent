@@ -4,12 +4,14 @@ namespace Llama\Database\Eloquent;
 
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use DB;
 
 class EloquentBuilder extends Builder
 {
@@ -23,7 +25,8 @@ class EloquentBuilder extends Builder
      * @param array $relationName
      * @return null
      */
-    public function getRelationInstance($model, array $relationName) {
+    public function getRelationInstance($model, array $relationName)
+    {
         $currentRelationName = array_shift($relationName);
 
         $related = $model->$currentRelationName();
@@ -45,7 +48,8 @@ class EloquentBuilder extends Builder
      * @param string $relation
      * @return null
      */
-    public function getNestedRelation($relation) {
+    public function getNestedRelation($relation)
+    {
         if (Str::contains($relation, '.')) {
             $relation = explode('.', $relation);
         } else {
@@ -62,7 +66,8 @@ class EloquentBuilder extends Builder
      * @return array
      * @internal param string $relation
      */
-    public function parseNestedRelations($relations) {
+    public function parseNestedRelations($relations)
+    {
         $results = [];
         foreach ($relations as $relation) {
             $results = $this->addNestedWiths($relation, $results);
@@ -74,11 +79,12 @@ class EloquentBuilder extends Builder
     /**
      * Add a join clause to the query.
      *
-     * @param  array|string  $relations
+     * @param  array|string $relations
      * @param string $type
-     * @param bool   $where
+     * @param bool $where
      *
      * @return EloquentBuilder
+     * @throws \Exception
      */
     public function joinRelation($relations, $type = 'inner', $where = false)
     {
@@ -97,7 +103,18 @@ class EloquentBuilder extends Builder
             $parentName = $this->getParentRelations($relationName);
             $parentAlias = !empty($parentName) ? $aliases[$parentName] : $relation->getParent()->getTable();
 
-            if ($relation instanceof BelongsTo) {
+            if ($relation instanceof MorphTo) {
+                $join = $this->getJoinMorphOne($relation, $relationAlias);
+
+                $this->query->join(
+                    $join['table'],
+                    $join['first'],
+                    '=',
+                    $parentAlias . '.' . $relation->getRelated()->getKeyName(),
+                    $type,
+                    $where
+                );
+            } elseif ($relation instanceof BelongsTo) {
                 $this->query->join(
                     "{$relation->getRelated()->getTable()} as {$relationAlias}",
                     $parentAlias . '.' . $relation->getForeignKey(),
@@ -143,7 +160,59 @@ class EloquentBuilder extends Builder
         return $this;
     }
 
-    private function parseAliasMap($relations = []) {
+    /**
+     * @param MorphTo $relation
+     * @param string $relationAlias
+     * @return array
+     * @throws \Exception
+     */
+    private function getJoinMorphOne(MorphTo $relation, string $relationAlias): array
+    {
+        $relatedModel = $relation->getRelated();
+
+        // doesnt support if there is not any morph map
+        if (!$relatedModel::MORPH_MAP) {
+            throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for join');
+        }
+        if (!$relatedModel::MORPH_MAP[$relation->getRelation()]) {
+            throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for `' . $relation->getRelation() . '``');
+        }
+
+        $primaryKey = null;
+        $queries = [];
+        $fillables = [];
+        foreach ($relatedModel::MORPH_MAP[$relation->getRelation()] as $morphName) {
+            $morphToModel = $relation->createModelByType($morphName);
+            $queries[] = DB::table($morphToModel->getTable());
+            $primaryKey = $morphToModel->getKeyName();
+            $fillables = array_merge($fillables, $morphToModel->getFillable());
+        }
+
+        // find the common attributes for correct union
+        $commonAttrs = array_count_values($fillables);
+        $commonAttrs = array_filter($commonAttrs, function ($count) {
+            return $count === 3;
+        });
+        $commonAttrs = array_keys($commonAttrs);
+
+        // make union query based on common attributes
+        $union = null;
+        foreach ($queries as $query) {
+            $query->select($commonAttrs);
+            if ($union) $union->union($query);
+            else $union = $query;
+        }
+
+        // join to temp (sub) table with unions
+        $raw = DB::raw('(' . $union->toSql()) . ") as `{$relationAlias}`";
+        return [
+            'table' => DB::raw($raw),
+            'first' => $relationAlias . '.' . $primaryKey
+        ];
+    }
+
+    private function parseAliasMap($relations = [])
+    {
         foreach ($relations as $relationName) {
             $this->relationAliases[$relationName] = str_replace('.', '_rel_', $relationName);
         }
@@ -156,7 +225,8 @@ class EloquentBuilder extends Builder
      * @param $string
      * @return string
      */
-    private function getParentRelations($string) {
+    private function getParentRelations($string)
+    {
         $arr = explode('.', $string);
         array_pop($arr);
         return implode('.', $arr);
@@ -167,7 +237,8 @@ class EloquentBuilder extends Builder
      * @param $string
      * @return mixed
      */
-    private function getColumn($string) {
+    private function getColumn($string)
+    {
         $arr = explode('.', $string);
         return array_pop($arr);
     }
@@ -183,10 +254,11 @@ class EloquentBuilder extends Builder
     /**
      * Add a "join where" clause to the query.
      *
-     * @param  array|string  $relations
+     * @param  array|string $relations
      * @param string $type
      *
      * @return EloquentBuilder|static
+     * @throws \Exception
      */
     public function joinRelationWhere($relations, $type = 'inner')
     {
@@ -196,9 +268,10 @@ class EloquentBuilder extends Builder
     /**
      * Add a left join to the query.
      *
-     * @param  array|string  $relations
+     * @param  array|string $relations
      *
      * @return EloquentBuilder|static
+     * @throws \Exception
      */
     public function leftjoinRelation($relations)
     {
@@ -208,9 +281,10 @@ class EloquentBuilder extends Builder
     /**
      * Add a "join where" clause to the query.
      *
-     * @param  array|string  $relations
+     * @param  array|string $relations
      *
      * @return EloquentBuilder|static
+     * @throws \Exception
      */
     public function leftJoinRelationWhere($relations)
     {
@@ -220,9 +294,10 @@ class EloquentBuilder extends Builder
     /**
      * Add a right join to the query.
      *
-     * @param  array|string  $relations
+     * @param  array|string $relations
      *
      * @return EloquentBuilder|static
+     * @throws \Exception
      */
     public function rightJoinRelation($relations)
     {
@@ -232,9 +307,10 @@ class EloquentBuilder extends Builder
     /**
      * Add a "right join where" clause to the query.
      *
-     * @param  array|string  $relations
+     * @param  array|string $relations
      *
      * @return EloquentBuilder|static
+     * @throws \Exception
      */
     public function rightJoinRelationWhere($relations)
     {
@@ -246,6 +322,7 @@ class EloquentBuilder extends Builder
      *
      * @param $relations
      * @return EloquentBuilder|static
+     * @throws \Exception
      * @internal param string $relation
      */
     public function crossJoinRelation($relations)
