@@ -103,11 +103,21 @@ class EloquentBuilder extends Builder
             $parentName = $this->getParentRelations($relationName);
             $parentAlias = !empty($parentName) ? $aliases[$parentName] : $relation->getParent()->getTable();
 
+            $relationWithoutConstraints = null;
+            // retrieve relation query without any constraints -
+            // avoid automatic queries based on foreign/related keys,
+            // because we are trying to do "join" via "sub-query" (as simplest way, but not the fastest?)
+            // it needed for relations, where additional conditions are used - like where(), orderBy(), etc
+            $relation::noConstraints(function() use (&$relationWithoutConstraints, $relationName) {
+                $relationWithoutConstraints = $this->getNestedRelation($relationName);
+            });
+
             if ($relation instanceof MorphTo) {
                 $join = $this->getJoinMorphOne($relation, $relationAlias);
 
-                $this->query->join(
+                $this->query->joinSub(
                     $join['table'],
+                    $relationAlias,
                     $join['first'],
                     '=',
                     $parentAlias . '.' . $relation->getRelated()->getKeyName(),
@@ -115,8 +125,9 @@ class EloquentBuilder extends Builder
                     $where
                 );
             } elseif ($relation instanceof BelongsTo) {
-                $this->query->join(
-                    "{$relation->getRelated()->getTable()} as {$relationAlias}",
+                $this->query->joinSub(
+                    $relationWithoutConstraints->getQuery(),
+                    $relationAlias,
                     $parentAlias . '.' . $relation->getForeignKey(),
                     '=',
                     $relationAlias . '.' . $relation->getOwnerKey(),
@@ -146,8 +157,10 @@ class EloquentBuilder extends Builder
                 );
             } elseif ($relation instanceof HasOneOrMany) {
                 // hasOne or hasMany
-                $this->query->join(
-                    "{$relation->getRelated()->getTable()} as {$relationAlias}",
+
+                $this->query->joinSub(
+                    $relationWithoutConstraints->getQuery(),
+                    $relationAlias,
                     "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
                     '=',
                     "{$relationAlias}.{$this->getColumn($relation->getQualifiedForeignKeyName())}",
@@ -204,9 +217,9 @@ class EloquentBuilder extends Builder
         }
 
         // join to temp (sub) table with unions
-        $raw = DB::raw('(' . $union->toSql()) . ") as `{$relationAlias}`";
+        // $raw = DB::raw('(' . $union->toSql()) . ") as `{$relationAlias}`";
         return [
-            'table' => DB::raw($raw),
+            'table' => $union,
             'first' => $relationAlias . '.' . $primaryKey
         ];
     }
