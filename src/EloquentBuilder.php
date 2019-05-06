@@ -128,9 +128,9 @@ class EloquentBuilder extends Builder
                 $this->query->joinSub(
                     $relationWithoutConstraints->getQuery(),
                     $relationAlias,
-                    $parentAlias . '.' . $relation->getForeignKey(),
+                    $parentAlias . '.' . $relation->getForeignKeyName(),
                     '=',
-                    $relationAlias . '.' . $relation->getOwnerKey(),
+                    $relationAlias . '.' . $relation->getOwnerKeyName(),
                     $type,
                     $where
                 );
