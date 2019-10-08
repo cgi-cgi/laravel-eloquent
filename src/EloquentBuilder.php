@@ -118,11 +118,11 @@ class EloquentBuilder extends Builder
                 $this->query->joinSub(
                     $join['table'],
                     $relationAlias,
-                    $join['first'],
-                    '=',
-                    $parentAlias . '.' . $relation->getRelated()->getKeyName(),
-                    $type,
-                    $where
+                    function($joinQuery) use ($join, $type, $parentAlias, $relationAlias, $relation) {
+                        $joinQuery->on($join['first'], '=', "{$parentAlias}.{$relation->getForeignKeyName()}");
+                        $joinQuery->on("{$parentAlias}.{$relation->getMorphType()}", '=', "{$relationAlias}.sub_{$relation->getMorphType()}");
+                    },
+                    null, null, $type
                 );
             } elseif ($relation instanceof BelongsTo) {
                 $this->query->joinSub(
@@ -191,27 +191,39 @@ class EloquentBuilder extends Builder
             throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for `' . $relation->getRelation() . '``');
         }
 
+        $relationMap = $relatedModel::MORPH_MAP[$relation->getRelation()];
+        $countRelations = count($relationMap);
         $primaryKey = null;
         $queries = [];
-        $fillables = [];
-        foreach ($relatedModel::MORPH_MAP[$relation->getRelation()] as $morphName) {
+        $fields = [];
+        foreach ($relationMap as $morphName) {
             $morphToModel = $relation->createModelByType($morphName);
-            $queries[] = DB::table($morphToModel->getTable());
+            $queries[] = DB::table($morphToModel->getTable())
+                ->addSelect(
+                    DB::raw("'{$morphToModel->getMorphClass()}' as `sub_{$relation->getMorphType()}`")
+                );
+
             $primaryKey = $morphToModel->getKeyName();
-            $fillables = array_merge($fillables, $morphToModel->getFillable());
+            $fields = array_merge($fields, $morphToModel->getVisible());
+            $fields = array_filter($fields, function ($attribute) use ($morphToModel) {
+                return !(
+                    method_exists($morphToModel, $attribute) ||
+                    method_exists($morphToModel, Str::camel("get{$attribute}Attribute"))
+                );
+            });
         }
 
         // find the common attributes for correct union
-        $commonAttrs = array_count_values($fillables);
-        $commonAttrs = array_filter($commonAttrs, function ($count) {
-            return $count === 3;
+        $commonFields = array_count_values($fields);
+        $commonFields = array_filter($commonFields, function ($count) use ($countRelations) {
+            return $count === $countRelations;
         });
-        $commonAttrs = array_keys($commonAttrs);
+        $commonFields = array_keys($commonFields);
 
         // make union query based on common attributes
         $union = null;
         foreach ($queries as $query) {
-            $query->select($commonAttrs);
+            $query->addSelect($commonFields);
             if ($union) $union->union($query);
             else $union = $query;
         }
