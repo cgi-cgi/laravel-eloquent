@@ -29,17 +29,22 @@ class EloquentBuilder extends Builder
     {
         $currentRelationName = array_shift($relationName);
 
-        $related = $model->$currentRelationName();
-        if (!$related instanceof Relation) {
+        $relation = $model->$currentRelationName();
+        if (!$relation instanceof Relation) {
             return null;
         }
 
         if (!empty($relationName)) {
-            $relation = $related->getRelated();
-            return $this->getRelationInstance($relation, $relationName);
+            // Can't to detect deep relation for morphed relations...
+            if ($relation instanceof MorphTo) {
+                return null;
+            }
+
+            $relatedModel = $relation->getRelated();
+            return $this->getRelationInstance($relatedModel, $relationName);
         }
 
-        return $related;
+        return $relation;
     }
 
     /**
@@ -98,6 +103,8 @@ class EloquentBuilder extends Builder
 
         foreach ($relations as $relationName) {
             $relation = $this->getNestedRelation($relationName);
+            if (!$relation) continue;
+
             $relationAlias = $aliases[$relationName];
 
             $parentName = $this->getParentRelations($relationName);
@@ -161,9 +168,18 @@ class EloquentBuilder extends Builder
                 $this->query->joinSub(
                     $relationWithoutConstraints->getQuery(),
                     $relationAlias,
-                    "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
-                    '=',
-                    "{$relationAlias}.{$this->getColumn($relation->getQualifiedForeignKeyName())}",
+                    function($joinQuery) use ($type, $parentAlias, $relationAlias, $relation) {
+                        $joinQuery->on(
+                            "{$parentAlias}.{$this->getColumn($relation->getQualifiedParentKeyName())}",
+                            '=',
+                            "{$relationAlias}.{$this->getColumn($relation->getQualifiedForeignKeyName())}"
+                        );
+
+                        // additional extra join function for support "has one" for morphTo relations
+                        if (property_exists($relation, 'joinExtra')) {
+                            call_user_func($relation->joinExtra, $joinQuery, $parentAlias, $relationAlias);
+                        }
+                    },
                     $type,
                     $where
                 );
@@ -175,11 +191,10 @@ class EloquentBuilder extends Builder
 
     /**
      * @param MorphTo $relation
-     * @param string $relationAlias
      * @return array
      * @throws \Exception
      */
-    private function getJoinMorphOne(MorphTo $relation, string $relationAlias): array
+    private function getMorphToModels(MorphTo $relation): array
     {
         $relatedModel = $relation->getRelated();
 
@@ -191,22 +206,41 @@ class EloquentBuilder extends Builder
             throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for `' . $relation->getRelation() . '``');
         }
 
+        $models = [];
         $relationMap = $relatedModel::MORPH_MAP[$relation->getRelation()];
-        $countRelations = count($relationMap);
-        $primaryKey = null;
-        $queries = [];
-        $fields = [];
         foreach ($relationMap as $morphName) {
             $morphToModel = $relation->createModelByType($morphName);
-            $queries[] = DB::table($morphToModel->getTable())
+            $models[] = $morphToModel;
+        }
+
+        return $models;
+    }
+
+    /**
+     * @param MorphTo $relation
+     * @param string $relationAlias
+     * @return array
+     * @throws \Exception
+     */
+    private function getJoinMorphOne(MorphTo $relation, string $relationAlias): array
+    {
+        $primaryKey = null;
+        $queries = [];
+        $models = $this->getMorphToModels($relation);
+        $countRelations = count($models);
+        $fields = [];
+        foreach ($models as $morphToModel) {
+            $queries[$morphToModel->getMorphClass()] = DB::table($morphToModel->getTable())
                 ->addSelect(
                     DB::raw("'{$morphToModel->getMorphClass()}' as `sub_{$relation->getMorphType()}`")
                 );
 
             $primaryKey = $morphToModel->getKeyName();
             $fields = array_merge($fields, $morphToModel->getVisible());
+            // exclude getters and relations
             $fields = array_filter($fields, function ($attribute) use ($morphToModel) {
                 return !(
+                    property_exists($morphToModel, $attribute) ||
                     method_exists($morphToModel, $attribute) ||
                     method_exists($morphToModel, Str::camel("get{$attribute}Attribute"))
                 );
