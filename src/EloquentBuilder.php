@@ -129,7 +129,7 @@ class EloquentBuilder extends Builder
                         $joinQuery->on($join['first'], '=', "{$parentAlias}.{$relation->getForeignKeyName()}");
                         $joinQuery->on("{$parentAlias}.{$relation->getMorphType()}", '=', "{$relationAlias}.sub_{$relation->getMorphType()}");
                     },
-                    null, null, $type
+                    null, null, $type, $where
                 );
             } elseif ($relation instanceof BelongsTo) {
                 $this->query->joinSub(
@@ -180,8 +180,7 @@ class EloquentBuilder extends Builder
                             call_user_func($relation->joinExtra, $joinQuery, $parentAlias, $relationAlias);
                         }
                     },
-                    $type,
-                    $where
+                    null, null, $type, $where
                 );
             }
         }
