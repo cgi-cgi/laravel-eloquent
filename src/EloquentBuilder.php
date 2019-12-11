@@ -201,12 +201,12 @@ class EloquentBuilder extends Builder
         if (!$relatedModel::MORPH_MAP) {
             throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for join');
         }
-        if (!$relatedModel::MORPH_MAP[$relation->getRelation()]) {
-            throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for `' . $relation->getRelation() . '``');
+        if (!$relatedModel::MORPH_MAP[$relation->getRelationName()]) {
+            throw new \Exception(class_basename($relatedModel) . ' doesn\' have morph map for `' . $relation->getRelationName() . '``');
         }
 
         $models = [];
-        $relationMap = $relatedModel::MORPH_MAP[$relation->getRelation()];
+        $relationMap = $relatedModel::MORPH_MAP[$relation->getRelationName()];
         foreach ($relationMap as $morphName) {
             $morphToModel = $relation->createModelByType($morphName);
             $models[] = $morphToModel;
