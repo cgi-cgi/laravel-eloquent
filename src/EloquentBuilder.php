@@ -229,7 +229,7 @@ class EloquentBuilder extends Builder
         $countRelations = count($models);
         $fields = [];
         foreach ($models as $morphToModel) {
-            $queries[$morphToModel->getMorphClass()] = DB::table($morphToModel->getTable())
+            $queries[$morphToModel->getMorphClass()] = $morphToModel->query()
                 ->addSelect(
                     DB::raw("'{$morphToModel->getMorphClass()}' as `sub_{$relation->getMorphType()}`")
                 );
