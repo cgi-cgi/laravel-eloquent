@@ -35,12 +35,19 @@ class EloquentBuilder extends Builder
         }
 
         if (!empty($relationName)) {
-            // Can't to detect deep relation for morphed relations...
             if ($relation instanceof MorphTo) {
-                return null;
+                // workaround (not the best, but...)
+                // walking through hardcoded static array with morph classes
+                // and find a first applicable relation
+                $morphMap = $relation->getRelated()::MORPH_MAP[$currentRelationName];
+                foreach ($morphMap as $morhpClass) {
+                    $relatedModel = $relation->createModelByType($morhpClass);
+                    if ($relatedModel) break;
+                }
+            } else {
+                $relatedModel = $relation->getRelated();
             }
 
-            $relatedModel = $relation->getRelated();
             return $this->getRelationInstance($relatedModel, $relationName);
         }
 
@@ -235,9 +242,9 @@ class EloquentBuilder extends Builder
                 );
 
             $primaryKey = $morphToModel->getKeyName();
-            $fields = array_merge($fields, $morphToModel->getVisible());
-            // exclude getters and relations
-            $fields = array_filter($fields, function ($attribute) use ($morphToModel) {
+            // Collect fields that are unique for this morphed model
+            // Exclude getters and relations
+            $fields[$morphToModel->getMorphClass()] = array_filter($morphToModel->getVisible(), function ($attribute) use ($morphToModel) {
                 return !(
                     property_exists($morphToModel, $attribute) ||
                     method_exists($morphToModel, $attribute) ||
@@ -246,17 +253,24 @@ class EloquentBuilder extends Builder
             });
         }
 
-        // find the common attributes for correct union
-        $commonFields = array_count_values($fields);
-        $commonFields = array_filter($commonFields, function ($count) use ($countRelations) {
-            return $count === $countRelations;
-        });
-        $commonFields = array_keys($commonFields);
-
-        // make union query based on common attributes
+        // Make union query based on common attributes
         $union = null;
-        foreach ($queries as $query) {
-            $query->addSelect($commonFields);
+        foreach ($queries as $morphClass => $query) {
+            // Select self-own fields
+            $query->addSelect($fields[$morphClass]);
+
+            // Calculate fields from other (morhped) models
+            // and select it as NULL (later it will be used as field for join (as NULL))
+            $fieldsPerOtherModel = array_filter($fields, fn($key) => $key !== $morphClass, ARRAY_FILTER_USE_KEY);
+            $otherFields = [];
+            foreach ($fieldsPerOtherModel as $otherModelFields) {
+                $otherFields = array_merge($otherFields, $otherModelFields);
+            }
+            $otherFields = array_diff($otherFields, $fields[$morphClass]);
+            if ($otherFields) {
+                $query->addSelect(array_map(fn($field) => DB::raw("NULL as `{$field}`"), $otherFields));
+            }
+
             if ($union) $union->union($query);
             else $union = $query;
         }
