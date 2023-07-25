@@ -5,6 +5,7 @@ namespace Llama\Database\Eloquent;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Str;
 
 use Illuminate\Database\Eloquent\Builder;
@@ -130,11 +131,11 @@ class EloquentBuilder extends Builder
                 $join = $this->getJoinMorphOne($relation, $relationAlias);
 
                 $this->query->joinSub(
-                    $join['table'],
+                    $join,
                     $relationAlias,
                     function($joinQuery) use ($join, $type, $parentAlias, $relationAlias, $relation) {
-                        $joinQuery->on($join['first'], '=', "{$parentAlias}.{$relation->getForeignKeyName()}");
-                        $joinQuery->on("{$parentAlias}.{$relation->getMorphType()}", '=', "{$relationAlias}.sub_{$relation->getMorphType()}");
+                        $joinQuery->on("{$parentAlias}.{$relation->getParent()->getKeyName()}", '=', "{$relationAlias}.inner_id");
+                        $joinQuery->on("{$parentAlias}.{$relation->getMorphType()}", '=', "{$relationAlias}.{$relation->getMorphType()}");
                     },
                     null, null, $type, $where
                 );
@@ -225,62 +226,77 @@ class EloquentBuilder extends Builder
     /**
      * @param MorphTo $relation
      * @param string $relationAlias
-     * @return array
+     * @return \Illuminate\Database\Query\Builder
      * @throws \Exception
      */
-    private function getJoinMorphOne(MorphTo $relation, string $relationAlias): array
+    private function getJoinMorphOne(MorphTo $relation, string $relationAlias): \Illuminate\Database\Query\Builder
     {
-        $primaryKey = null;
-        $queries = [];
         $models = $this->getMorphToModels($relation);
-        $countRelations = count($models);
-        $fields = [];
-        foreach ($models as $morphToModel) {
-            $queries[$morphToModel->getMorphClass()] = $morphToModel->query()
-                ->addSelect(
-                    DB::raw("'{$morphToModel->getMorphClass()}' as `sub_{$relation->getMorphType()}`")
-                );
+        $mergedFields = [];
 
-            $primaryKey = $morphToModel->getKeyName();
+        $caseColumn = function(MorphTo $relation, $field, $aliases) {
+            $morphType = "{$relation->getMorphType()}";
+            $sql = " CASE $morphType";
+
+            foreach ($aliases as $morphValue) {
+                $sql .= " WHEN '{$morphValue['map-from-class']}' THEN {$morphValue['map-to-value']}";
+            }
+
+            $sql .= " ELSE NULL";
+            $sql .= " END as '$field'";
+
+            return DB::raw($sql);
+        };
+
+        $innerQuery = $relation->getParent()->newQuery()->withoutGlobalScopes();
+        $innerQueryAlias = "{$innerQuery->from}_$relationAlias";
+
+        $innerQuery = DB::table($innerQuery->from, $innerQueryAlias);
+        $innerQuery->selectRaw(DB::raw("`$innerQueryAlias`.`id` as `inner_id`"));
+        $innerQuery->selectRaw(DB::raw("`$innerQueryAlias`.`{$relation->getMorphType()}` as `{$relation->getMorphType()}`"));
+
+        $aliases = [];
+        foreach ($models as $morphToModel) {
+            $innerJoinAlias = "{$innerQueryAlias}_{$morphToModel->getQuery()->from}";
+
+            $innerQuery->leftJoin("{$morphToModel->getQuery()->from} as $innerJoinAlias", function (JoinClause $join) use (
+                $innerQueryAlias,
+                $relation,
+                $innerJoinAlias,
+                $morphToModel
+            ) {
+                $join->on("$innerJoinAlias.{$morphToModel->getKeyName()}", '=', "$innerQueryAlias.{$relation->getForeignKeyName()}");
+                $join->on("$innerQueryAlias.{$relation->getMorphType()}", '=', DB::raw("'{$morphToModel->getMorphClass()}'"));
+            }, 'on');
+
+            $aliases[$morphToModel->getMorphClass()] = $innerJoinAlias;
+        }
+
+        foreach ($models as $morphToModel) {
             // Collect fields that are unique for this morphed model
             // Exclude getters and relations
-            $fields[$morphToModel->getMorphClass()] = array_filter($morphToModel->getVisible(), function ($attribute) use ($morphToModel) {
+            $modelFields = array_filter($morphToModel->getVisible(), function ($attribute) use ($morphToModel) {
                 return !(
                     property_exists($morphToModel, $attribute) ||
                     method_exists($morphToModel, $attribute) ||
                     method_exists($morphToModel, Str::camel("get{$attribute}Attribute"))
                 );
             });
+
+            foreach ($modelFields as $field) {
+                $mergedFields[$field] = $mergedFields[$field] ?? [];
+                $mergedFields[$field][] = [
+                    'map-from-class' => $morphToModel->getMorphClass(),
+                    'map-to-value' => "`{$aliases[$morphToModel->getMorphClass()]}`.`{$field}`",
+                ];
+            }
         }
 
-        // Make union query based on common attributes
-        $union = null;
-        foreach ($queries as $morphClass => $query) {
-            // Select self-own fields
-            $query->addSelect($fields[$morphClass]);
-
-            // Calculate fields from other (morhped) models
-            // and select it as NULL (later it will be used as field for join (as NULL))
-            $fieldsPerOtherModel = array_filter($fields, fn($key) => $key !== $morphClass, ARRAY_FILTER_USE_KEY);
-            $otherFields = [];
-            foreach ($fieldsPerOtherModel as $otherModelFields) {
-                $otherFields = array_merge($otherFields, $otherModelFields);
-            }
-            $otherFields = array_diff($otherFields, $fields[$morphClass]);
-            if ($otherFields) {
-                $query->addSelect(array_map(fn($field) => DB::raw("NULL as `{$field}`"), $otherFields));
-            }
-
-            if ($union) $union->union($query);
-            else $union = $query;
+        foreach ($mergedFields as $field => $aliases) {
+            $innerQuery->selectRaw($caseColumn($relation, $field, $aliases));
         }
 
-        // join to temp (sub) table with unions
-        // $raw = DB::raw('(' . $union->toSql()) . ") as `{$relationAlias}`";
-        return [
-            'table' => $union,
-            'first' => $relationAlias . '.' . $primaryKey
-        ];
+        return $innerQuery;
     }
 
     private function parseAliasMap($relations = [])
