@@ -36,23 +36,35 @@ class EloquentBuilder extends Builder
         }
 
         if (!empty($relationName)) {
-            if ($relation instanceof MorphTo) {
-                // workaround (not the best, but...)
-                // walking through hardcoded static array with morph classes
-                // and find a first applicable relation
-                $morphMap = $relation->getRelated()::MORPH_MAP[$currentRelationName];
-                foreach ($morphMap as $morhpClass) {
-                    $relatedModel = $relation->createModelByType($morhpClass);
-                    if ($relatedModel) break;
-                }
-            } else {
-                $relatedModel = $relation->getRelated();
-            }
+            $relatedModel = $this->getRelatedModelInstance($relation, $currentRelationName);
 
             return $this->getRelationInstance($relatedModel, $relationName);
         }
 
         return $relation;
+    }
+
+    /**
+     * @param Relation $relation
+     * @param string $relationName
+     * @return \Illuminate\Database\Eloquent\Model
+     */
+    public function getRelatedModelInstance(Relation $relation, string $relationName)
+    {
+        if ($relation instanceof MorphTo) {
+            // workaround (not the best, but...)
+            // walking through hardcoded static array with morph classes
+            // and find a first applicable relation
+            $morphMap = $relation->getRelated()::MORPH_MAP[$relationName];
+            foreach ($morphMap as $morhpClass) {
+                $relatedModel = $relation->createModelByType($morhpClass);
+                if ($relatedModel) break;
+            }
+        } else {
+            $relatedModel = $relation->getRelated();
+        }
+
+        return $relatedModel;
     }
 
     /**
