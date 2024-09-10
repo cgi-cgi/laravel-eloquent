@@ -30,7 +30,12 @@ class EloquentBuilder extends Builder
     {
         $currentRelationName = array_shift($relationName);
 
-        $relation = $model->$currentRelationName();
+        try {
+            $relation = $model->$currentRelationName();
+        } catch (\Exception $e) {
+            return null;
+        }
+
         if (!$relation instanceof Relation) {
             return null;
         }
